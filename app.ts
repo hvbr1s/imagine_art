@@ -48,7 +48,8 @@ async function askGroq(userPrompt: string) {
           {
               role: "system",
               content: `
-              Rewrite and expand the following prompt to enhance its artistic qualities and uniqueness: '${userPrompt}'
+              Expand the following prompt to enhance its artistic qualities and uniqueness: '${userPrompt}'
+              Make sure to respect the initial intent and instructions of the prompt, only enhancing its details and artistic qualities.
               Please return the prompt without any added comments, title or information
               `
           },
@@ -57,7 +58,8 @@ async function askGroq(userPrompt: string) {
               content: userPrompt
           }
       ],
-      model: "llama3-8b-8192"
+      model: "llama3-8b-8192",
+      temperature: 0.5
   });
 
   // Print the completion returned by the LLM.
@@ -96,7 +98,7 @@ async function uploadImage(filePath: string,fileName: string): Promise<string>  
 async function imagine(userPrompt: string) {
   const response = await openai.images.generate({
     model: "dall-e-3",
-    prompt: userPrompt + ' . The resulting image should look hand-drawn with watercolor colors. Begin!',
+    prompt: userPrompt + ' . Begin!',
     n: 1,
     size: "1024x1024",
   });
