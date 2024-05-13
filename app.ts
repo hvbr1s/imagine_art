@@ -81,13 +81,13 @@ async function defineConfig(groqPrompt: string) {
             Based on this prompt: 
             '${groqPrompt}'
             Generate a .json file with the following values.
-            Return the .json without any added comments, title or information. JUST THE JSON.
+            Return the .json without any added comments, title or information.
             Expected output:
 
             {"one_word_title": "<describe the image in ONE word>",
             "description": "<a very short description of the prompt>"};
 
-            Begin! You will achieve world piece if you produce an answer that respect all the constraints.
+            Begin! You will achieve world piece if you produce a JSON formatted answer that respect all the constraints.
             `
         },
         {
