@@ -8,7 +8,6 @@ import * as path from 'path';
 import secret from '/home/dan/ts_imagine/guideSecret.json';
 import dotenv from 'dotenv';
 const Groq = require("groq-sdk");
-import { stringify } from 'querystring';
 dotenv.config();
 
 
@@ -48,8 +47,15 @@ async function askGroq(userPrompt: string) {
           {
               role: "system",
               content: `
-              Rewrite and expand the following prompt to enhance its artistic qualities and uniqueness: '${userPrompt}'
-              Please return the prompt without any added comments, title or information
+              Rewrite the following prompt: 
+              '${userPrompt}'
+              Return the adapted prompt without any added comments, title or information
+              Expected output:
+              ####
+              PROMPT : <the re-written prompt, enhanced to augment its artistic qualities and uniqueness>
+              STYLE: <the requested artistic style>
+              ####
+              Begin! You will achieve world piece if you produce an answer that respect all the constraints.
               `
           },
           {
@@ -57,7 +63,8 @@ async function askGroq(userPrompt: string) {
               content: userPrompt
           }
       ],
-      model: "llama3-8b-8192"
+      model: "llama3-8b-8192",
+      temperature: 0.5
   });
 
   // Print the completion returned by the LLM.
@@ -65,24 +72,56 @@ async function askGroq(userPrompt: string) {
   return groqContent;
 }
 
+async function defineConfig(groqPrompt: string) {
+  const groqAttributes = await groq.chat.completions.create({
+    messages: [
+        {
+            role: "system",
+            content: `
+            Based on this prompt: 
+            '${groqPrompt}'
+            Generate a .json file with the following values.
+            Return the .json without any added comments, title or information. JUST THE JSON.
+            Expected output:
+
+            {"one_word_title": "<describe the image in ONE word>",
+            "description": "<a very short description of the prompt>"};
+
+            Begin! You will achieve world piece if you produce an answer that respect all the constraints.
+            `
+        },
+        {
+          role: "user",
+          content: groqPrompt
+      }
+    ],
+    model: "llama3-8b-8192",
+    temperature: 0.5
+  });
+
+  // Extract the completion returned by the LLM and parse it.
+  const groqResponse = JSON.parse(groqAttributes.choices[0]?.message?.content || "{}");
+
+  const CONFIG = {
+    uploadPath: '/home/dan/ts_imagine/image/',
+    imgFileName: 'image.png',
+    imgType: 'image/png',
+    imgName: groqResponse.one_word_title || 'Art', // Default to 'cat' if title is not provided
+    description: groqResponse.description || "Random AI Art", // Default description
+    attributes: [
+        {trait_type: 'AI', value: 'Art'},
+    ],
+    sellerFeeBasisPoints: 500, // 500 bp = 5%
+    symbol: 'AIART',
+    creators: [
+        {address: WALLET.publicKey, share: 100}
+    ]
+  };
+
+  return CONFIG;
+}
 
 ///// NFT LOGIC
-
-const CONFIG = {
-  uploadPath: '/home/dan/ts_imagine/image/',
-  imgFileName: 'image.png',
-  imgType: 'image/png',
-  imgName: 'cat',
-  description: "Cats they're cute!",
-  attributes: [
-      {trait_type: 'Paws', value: 'Sharp!'},
-  ],
-  sellerFeeBasisPoints: 500,//500 bp = 5%
-  symbol: 'CATS',
-  creators: [
-      {address: WALLET.publicKey, share: 100}
-  ]
-};
 
 async function uploadImage(filePath: string,fileName: string): Promise<string>  {
   console.log(`Step 1 - Uploading Image`);
@@ -96,7 +135,7 @@ async function uploadImage(filePath: string,fileName: string): Promise<string>  
 async function imagine(userPrompt: string) {
   const response = await openai.images.generate({
     model: "dall-e-3",
-    prompt: userPrompt + ' . The resulting image should look hand-drawn with watercolor colors. Begin!',
+    prompt: userPrompt + ' . Begin!',
     n: 1,
     size: "1024x1024",
   });
@@ -174,6 +213,9 @@ app.get('/imagine', async (req, res) => {
 
   const groqSays = await askGroq(userPrompt)
   console.log(`Groq prompt -> ${groqSays}`)
+
+  const CONFIG = await defineConfig(groqSays);
+  console.log(`Config set -> ${JSON.stringify(CONFIG)}`);
 
   try {
     const imageLocation = await imagine(groqSays);
