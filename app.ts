@@ -106,8 +106,8 @@ async function defineConfig(groqPrompt: string) {
     uploadPath: '/home/dan/ts_imagine/image/',
     imgFileName: 'image.png',
     imgType: 'image/png',
-    imgName: groqResponse.one_word_title || 'Art', // Default to 'cat' if title is not provided
-    description: groqResponse.description || "Random AI Art", // Default description
+    imgName: groqResponse.one_word_title || 'Art', 
+    description: groqResponse.description || "Random AI Art",
     attributes: [
         {trait_type: 'AI', value: 'Art'},
     ],
@@ -224,15 +224,7 @@ app.get('/imagine', async (req, res) => {
     console.log(metadataUri)
     const minter = mintNft(metadataUri, CONFIG.imgName, CONFIG.sellerFeeBasisPoints, CONFIG.symbol, CONFIG.creators);
     console.log(minter)
-    // Delete the image file after use
-    // fs.unlink(imageLocation, (err) => {
-    //   if (err) {
-    //     console.error('Failed to delete image:', err);
-    //   } else {
-    //     console.log(`Image at ${imageLocation} deleted successfully.`);
-    //   }
-    // });
-    res.send(minter);
+    res.send('Done!');
   } 
   catch (error) {
     console.error('Error processing your request:', error);
