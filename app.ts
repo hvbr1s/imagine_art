@@ -200,8 +200,6 @@ async function mintNft(metadataUri: string, name: string, sellerFee: number, sym
 
 ///////// API ROUTE
 
-
-
 // Define the /imagine route
 app.get('/imagine', async (req, res) => {
   const userPrompt = req.query.user_prompt;
@@ -226,9 +224,18 @@ app.get('/imagine', async (req, res) => {
     console.log(metadataUri)
     const minter = mintNft(metadataUri, CONFIG.imgName, CONFIG.sellerFeeBasisPoints, CONFIG.symbol, CONFIG.creators);
     console.log(minter)
-    return minter;
+    // Delete the image file after use
+    // fs.unlink(imageLocation, (err) => {
+    //   if (err) {
+    //     console.error('Failed to delete image:', err);
+    //   } else {
+    //     console.log(`Image at ${imageLocation} deleted successfully.`);
+    //   }
+    // });
+    res.send(minter);
   } 
   catch (error) {
+    console.error('Error processing your request:', error);
     res.status(500).send('Error processing your request');
   }
 
