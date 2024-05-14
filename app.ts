@@ -5,7 +5,7 @@ import { Metaplex, keypairIdentity, bundlrStorage, toMetaplexFile, toBigNumber }
 import axios from 'axios';
 import * as fs from 'fs';
 import * as path from 'path';
-import secret from '/home/dan/ts_imagine/guideSecret.json';
+import secret from './secrets/Art6oYTueZBEHoBQKVyHcCVkzkLBjpJ5JwwSrnzFUXyq.json';
 import dotenv from 'dotenv';
 const Groq = require("groq-sdk");
 dotenv.config();
@@ -32,17 +32,18 @@ const METAPLEX = Metaplex.make(SOLANA_CONNECTION)
 
 
 ///// AI LOGIC
-
-const openai = new OpenAI({
+const gpt_client = new OpenAI({
   apiKey: process.env['OPENAI_API_KEY'],
 });
+const gpt_llm = "gpt-4o"
 
-const groq = new Groq({
+const groq_client = new Groq({
     apiKey: process.env['GROQ_API_KEY']
 });
+const groq_llm = "llama3-8b-8192"
 
-async function askGroq(userPrompt: string) {
-  const groqResponse = await groq.chat.completions.create({
+async function generatePrompt(userPrompt: string) {
+  const llmResponse = await gpt_client.chat.completions.create({
       messages: [
           {
               role: "system",
@@ -54,6 +55,7 @@ async function askGroq(userPrompt: string) {
               ####
               PROMPT : <the re-written prompt, enhanced to augment its artistic qualities and uniqueness>
               STYLE: <the requested artistic style>
+              MOOD: <the desired mood for the prompt>
               ####
               Begin! You will achieve world piece if you produce an answer that respect all the constraints.
               `
@@ -63,53 +65,57 @@ async function askGroq(userPrompt: string) {
               content: userPrompt
           }
       ],
-      model: "llama3-8b-8192",
+      model: gpt_llm,
       temperature: 0.5
   });
 
   // Print the completion returned by the LLM.
-  const groqContent = JSON.stringify(groqResponse.choices[0]?.message?.content || "");
+  const groqContent = JSON.stringify(llmResponse.choices[0]?.message?.content || "");
   return groqContent;
 }
 
-async function defineConfig(groqPrompt: string) {
-  const groqAttributes = await groq.chat.completions.create({
+async function defineConfig(llmPrompt: string) {
+  const nftAttributes = await gpt_client.chat.completions.create({
     messages: [
         {
             role: "system",
             content: `
             Based on this prompt: 
-            '${groqPrompt}'
+            '${llmPrompt}'
             Generate a .json file with the following values.
             Return the .json without any added comments, title or information.
             Expected output:
 
-            {"one_word_title": "<describe the image in ONE word>",
-            "description": "<a very short description of the prompt>"};
+            {
+              "one_word_title": "<describe the image in ONE word>",
+              "description": "<a very short description of the prompt>",
+              "mood": "<the mood of the prompt>"
+          };
 
-            Begin! You will achieve world piece if you produce a JSON formatted answer that respect all the constraints.
+            Begin! You will achieve world piece if you produce a correctly formatted .JSON answer that respect all the constraints.
             `
         },
         {
           role: "user",
-          content: groqPrompt
+          content: llmPrompt,
       }
     ],
-    model: "llama3-8b-8192",
-    temperature: 0.5
+    model: gpt_llm,
+    temperature: 0.5,
+    response_format: { type: "json_object" },
   });
 
   // Extract the completion returned by the LLM and parse it.
-  const groqResponse = JSON.parse(groqAttributes.choices[0]?.message?.content || "{}");
+  const llmResponse = JSON.parse(nftAttributes.choices[0]?.message?.content || "{}");
 
   const CONFIG = {
-    uploadPath: '/home/dan/ts_imagine/image/',
+    uploadPath: './image/',
     imgFileName: 'image.png',
     imgType: 'image/png',
-    imgName: groqResponse.one_word_title || 'Art', 
-    description: groqResponse.description || "Random AI Art",
+    imgName: llmResponse.one_word_title || 'Art', 
+    description: llmResponse.description || "Random AI Art",
     attributes: [
-        {trait_type: 'AI', value: 'Art'},
+        {trait_type: 'Mood', value: llmResponse.mood ||'Focused'},
     ],
     sellerFeeBasisPoints: 500, // 500 bp = 5%
     symbol: 'AIART',
@@ -133,7 +139,7 @@ async function uploadImage(filePath: string,fileName: string): Promise<string>  
 }
 
 async function imagine(userPrompt: string) {
-  const response = await openai.images.generate({
+  const response = await gpt_client.images.generate({
     model: "dall-e-3",
     prompt: userPrompt + ' . Begin!',
     n: 1,
@@ -149,7 +155,7 @@ async function imagine(userPrompt: string) {
   });
 
   // Define the path where the image will be saved
-  const imagePath = path.join('/home/dan/ts_imagine/image', 'image.png');
+  const imagePath = path.join('./image', 'image.png');
 
   // Write the image data to a file
   fs.writeFileSync(imagePath, imageResponse.data);
@@ -209,14 +215,14 @@ app.get('/imagine', async (req, res) => {
     return;
   }
 
-  const groqSays = await askGroq(userPrompt)
-  console.log(`Groq prompt -> ${groqSays}`)
+  const llmSays = await generatePrompt(userPrompt)
+  console.log(`LLM prompt -> ${llmSays}`)
 
-  const CONFIG = await defineConfig(groqSays);
+  const CONFIG = await defineConfig(llmSays);
   console.log(`Config set -> ${JSON.stringify(CONFIG)}`);
 
   try {
-    const imageLocation = await imagine(groqSays);
+    const imageLocation = await imagine(llmSays);
     console.log(`Image succesfully created and stored in: ${imageLocation}`);
     const imageUri = await uploadImage(imageLocation, "")
     console.log(`Image URI -> ${imageUri}`)
