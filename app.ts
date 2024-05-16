@@ -1,28 +1,27 @@
-import express from 'express';
-import OpenAI from 'openai';
-import { Connection, Keypair, PublicKey} from "@solana/web3.js";
-import { Metaplex, keypairIdentity, bundlrStorage, toMetaplexFile } from "@metaplex-foundation/js";
-import axios from 'axios';
 import * as fs from 'fs';
 import * as path from 'path';
-import secret from './secrets/Art6oYTueZBEHoBQKVyHcCVkzkLBjpJ5JwwSrnzFUXyq.json';
-import { TokenStandard } from '@metaplex-foundation/mpl-token-metadata';
 import dotenv from 'dotenv';
-const Groq = require("groq-sdk");
+import express from 'express';
+import axios from 'axios';
+import OpenAI from 'openai';
+import { Connection, Keypair, PublicKey } from "@solana/web3.js";
+import { Metaplex, keypairIdentity, bundlrStorage, toMetaplexFile } from "@metaplex-foundation/js";
+import { TokenStandard } from '@metaplex-foundation/mpl-token-metadata';
+import secret from './secrets/Art6oYTueZBEHoBQKVyHcCVkzkLBjpJ5JwwSrnzFUXyq.json';
+
+// Load environment variable
 dotenv.config();
 
 
 // Create a new express application instance
 const app: express.Application = express();
-
 // The port the express app will listen on
 const port: number = process.env.PORT ? parseInt(process.env.PORT) : 8800;
 
-// Initiate connection to Solana
+// Initiate sender wallet and connection to Solana
 const QUICKNODE_RPC = 'https://fragrant-ancient-needle.solana-devnet.quiknode.pro/71caf4b466e52b402cb9891702899d7631646396/';
 const SOLANA_CONNECTION = new Connection(QUICKNODE_RPC);
 const WALLET = Keypair.fromSecretKey(new Uint8Array(secret));
-
 const METAPLEX = Metaplex.make(SOLANA_CONNECTION)
     .use(keypairIdentity(WALLET))
     .use(bundlrStorage({
@@ -38,10 +37,11 @@ const gpt_client = new OpenAI({
 });
 const gpt_llm = "gpt-4o"
 
-const groq_client = new Groq({
-    apiKey: process.env['GROQ_API_KEY']
-});
-const groq_llm = "llama3-8b-8192"
+// const Groq = require("groq-sdk");
+// const groq_client = new Groq({
+//     apiKey: process.env['GROQ_API_KEY']
+// });
+// const groq_llm = "llama3-8b-8192"
 
 async function generatePrompt(userPrompt: string) {
   const llmResponse = await gpt_client.chat.completions.create({
@@ -73,15 +73,6 @@ async function generatePrompt(userPrompt: string) {
   // Print the completion returned by the LLM.
   const groqContent = JSON.stringify(llmResponse.choices[0]?.message?.content || "");
   return groqContent;
-}
-
-function isValidPublicKey(key: string): boolean {
-  try {
-      const pubkey = new PublicKey(key);
-      return pubkey.toBase58() === key; // Validates the key and ensures it's a valid base58 encoded string
-  } catch (e) {
-      return false; // The key was not a valid base58 string
-  }
 }
 
 async function defineConfig(llmPrompt: string) {
@@ -140,7 +131,7 @@ async function defineConfig(llmPrompt: string) {
 ///// NFT LOGIC
 
 async function uploadImage(filePath: string,fileName: string): Promise<string>  {
-  console.log(`Step 1 - Uploading Image`);
+  console.log(`Step 1 - Uploading Image🔼`);
   const imgBuffer = fs.readFileSync(filePath + fileName);
   const imgMetaplexFile = toMetaplexFile(imgBuffer,fileName);
   const imgUri = await METAPLEX.storage().upload(imgMetaplexFile);
@@ -169,12 +160,11 @@ async function imagine(userPrompt: string) {
 
   // Write the image data to a file
   fs.writeFileSync(imagePath, imageResponse.data);
-
   return imagePath
 }
 
 async function uploadMetadata(imgUri: string, imgType: string, nftName: string, description: string, attributes: {trait_type: string, value: string}[]) {
-  console.log(`Step 2 - Uploading Metadata`);
+  console.log(`Step 2 - Uploading Metadata⏫`);
   const { uri } = await METAPLEX
   .nfts()
   .uploadMetadata({
@@ -191,9 +181,7 @@ async function uploadMetadata(imgUri: string, imgType: string, nftName: string, 
           ]
       }
   });
-  console.log('   Metadata URI:',uri);
   return uri;  
-
 }
 
 async function mintProgrammableNft(
@@ -204,7 +192,7 @@ async function mintProgrammableNft(
   creators: { address: PublicKey, share: number }[]
 )
 {
-  console.log(`Step 3 - Minting pNFT`);
+  console.log(`Step 3 - Minting pNFT🔨`);
   try {
     const transactionBuilder = await METAPLEX
     .nfts()
@@ -233,9 +221,9 @@ async function mintProgrammableNft(
         throw new Error('failed to confirm transaction');
     }
     const { mintAddress } = transactionBuilder.getContext();
-    console.log(`   Success!🎉`);
-    console.log(`   Minted NFT: https://explorer.solana.com/address/${mintAddress.toString()}?cluster=devnet`);
-    console.log(`   Tx: https://explorer.solana.com/tx/${signature}?cluster=devnet`);
+    console.log(`   Mint successful!🎉`);
+    console.log(`   Minted NFT:       https://explorer.solana.com/address/${mintAddress.toString()}?cluster=devnet`);
+    console.log(`   Mint transaction: https://explorer.solana.com/tx/${signature}?cluster=devnet`);
     return mintAddress
   }
   catch (err) {
@@ -249,7 +237,7 @@ async function transferNFT(
   recipientPublicKey: string,
   mintAddress: string
 ) {
-  console.log(`Step 3 - Transferring pNFT to ${recipientPublicKey}`);
+  console.log(`Step 4 - Transferring pNFT to ${recipientPublicKey} 📬`);
   const senderAddress = senderKeypair.publicKey.toString()
   const destination = new PublicKey(recipientPublicKey);
   const mint = new PublicKey(mintAddress)
@@ -265,19 +253,14 @@ async function transferNFT(
       throw new Error('failed to confirm transfer transaction');
   }
   const txSuccess = (` 
-  Transfer successful!\n 
-  Sender: ${senderAddress}\n
-  Receiver: ${recipientPublicKey}\n
-  Transation: https://explorer.solana.com/tx/${sig2}?cluster=devnet`);
+  Transfer successful!🥳\n 
+  Sender->     https://explorer.solana.com/address/${senderAddress}?cluster=devnet\n
+  Receiver->   https://explorer.solana.com/address/${recipientPublicKey}?cluster=devnet\n
+  Transaction-> https://explorer.solana.com/tx/${sig2}?cluster=devnet`);
   console.log(txSuccess)
   return txSuccess
 
 }
-
-// function isValidBase58(value: string): boolean {
-//   const BASE58_REGEX = /^[A-HJ-NP-Za-km-z1-9]+$/;
-//   return BASE58_REGEX.test(value);
-// }
 
 ///////// API ROUTE
 
@@ -317,9 +300,8 @@ app.get('/imagine', async (req, res) => {
 
     // Correct the order and usage of parameters for the transferNFT function
     const mintSend = await transferNFT(WALLET, userAddress, mint);
-
     res.send({ message: mintSend });
-    return
+
   } catch (error) {
     console.error('Error processing request:', error);
     res.status(500).send({ error: "Error processing the request"});
@@ -332,5 +314,4 @@ app.listen(port, () => {
 });
 
 export default app;
-
 // test: curl "http://localhost:8800/imagine?user_prompt=a%20cat%20on%20a%20roof"
