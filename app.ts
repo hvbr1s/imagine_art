@@ -12,7 +12,6 @@ import secret from './secrets/Art6oYTueZBEHoBQKVyHcCVkzkLBjpJ5JwwSrnzFUXyq.json'
 // Load environment variable
 dotenv.config();
 
-
 // Create a new express application instance
 const app: express.Application = express();
 // The port the express app will listen on
@@ -129,14 +128,12 @@ async function defineConfig(llmPrompt: string) {
 }
 
 ///// NFT LOGIC
-
 async function uploadImage(filePath: string,fileName: string): Promise<string>  {
   console.log(`Step 1 - Uploading Image🔼`);
   const imgBuffer = fs.readFileSync(filePath + fileName);
   const imgMetaplexFile = toMetaplexFile(imgBuffer,fileName);
   const imgUri = await METAPLEX.storage().upload(imgMetaplexFile);
   return imgUri;
-
 }
 
 async function imagine(userPrompt: string) {
@@ -312,6 +309,4 @@ app.get('/imagine', async (req, res) => {
 app.listen(port, () => {
     console.log(`Listening at http://localhost:${port}/`);
 });
-
 export default app;
-// test: curl "http://localhost:8800/imagine?user_prompt=a%20cat%20on%20a%20roof"
