@@ -7,15 +7,16 @@ const rl = readline.createInterface({
     output: process.stdout
 });
 
-// Function to encode user prompt for URL
-const encodePrompt = (prompt: string): string => {
-    return encodeURIComponent(prompt);
+// Function to encode user inputs for URL
+const encodeInput = (input: string): string => {
+    return encodeURIComponent(input);
 };
 
 // Function to send request to the API
-const sendRequest = async (prompt: string) => {
-    const encodedPrompt = encodePrompt(prompt);
-    const url = `http://localhost:8800/imagine?user_prompt=${encodedPrompt}`;
+const sendRequest = async (prompt: string, address: string) => {
+    const encodedPrompt = encodeInput(prompt);
+    const encodedAddress = encodeInput(address);
+    const url = `http://localhost:8800/imagine?user_prompt=${encodedPrompt}&address=${encodedAddress}`;
 
     try {
         const response = await axios.get(url);
@@ -29,7 +30,11 @@ const sendRequest = async (prompt: string) => {
 
 // Prompt user for input
 rl.question('Enter your prompt: ', (prompt) => {
-    sendRequest(prompt).then(() => {
-        rl.close();
+    rl.question('Enter your address: ', (address) => {
+        sendRequest(prompt, address).then(() => {
+            rl.close();
+        });
     });
 });
+
+// Test address: 2x4mEdCmozX4Lud87gvdkA9Luo2XWd9MWRX4mBMoG5MA
