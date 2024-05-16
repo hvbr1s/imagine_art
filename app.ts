@@ -1,11 +1,12 @@
 import express from 'express';
 import OpenAI from 'openai';
-import { Connection, Keypair, PublicKey } from "@solana/web3.js";
-import { Metaplex, keypairIdentity, bundlrStorage, toMetaplexFile, toBigNumber } from "@metaplex-foundation/js";
+import { Connection, Keypair, PublicKey} from "@solana/web3.js";
+import { Metaplex, keypairIdentity, bundlrStorage, toMetaplexFile } from "@metaplex-foundation/js";
 import axios from 'axios';
 import * as fs from 'fs';
 import * as path from 'path';
 import secret from './secrets/Art6oYTueZBEHoBQKVyHcCVkzkLBjpJ5JwwSrnzFUXyq.json';
+import { TokenStandard } from '@metaplex-foundation/mpl-token-metadata';
 import dotenv from 'dotenv';
 const Groq = require("groq-sdk");
 dotenv.config();
@@ -72,6 +73,15 @@ async function generatePrompt(userPrompt: string) {
   // Print the completion returned by the LLM.
   const groqContent = JSON.stringify(llmResponse.choices[0]?.message?.content || "");
   return groqContent;
+}
+
+function isValidPublicKey(key: string): boolean {
+  try {
+      const pubkey = new PublicKey(key);
+      return pubkey.toBase58() === key; // Validates the key and ensures it's a valid base58 encoded string
+  } catch (e) {
+      return false; // The key was not a valid base58 string
+  }
 }
 
 async function defineConfig(llmPrompt: string) {
@@ -186,59 +196,135 @@ async function uploadMetadata(imgUri: string, imgType: string, nftName: string, 
 
 }
 
-async function mintNft(metadataUri: string, name: string, sellerFee: number, symbol: string, creators: {address: PublicKey, share: number}[]) {
-  console.log(`Step 3 - Minting NFT`);
-  const { nft } = await METAPLEX
-  .nfts()
-  .create({
-      uri: metadataUri,
-      name: name,
-      sellerFeeBasisPoints: sellerFee,
-      symbol: symbol,
-      creators: creators,
-      isMutable: false,
-  });
-  console.log(`   Success!🎉`);
-  console.log(`   Minted NFT: https://explorer.solana.com/address/${nft.address}?cluster=devnet`);
-  const yourNFT = `Your NFT -> https://explorer.solana.com/address/${nft.address}?cluster=devnet`
-  return(yourNFT);
+async function mintProgrammableNft(
+  metadataUri: string,
+  name: string,
+  sellerFee: number,
+  symbol: string,
+  creators: { address: PublicKey, share: number }[]
+)
+{
+  console.log(`Step 3 - Minting pNFT`);
+  try {
+    const transactionBuilder = await METAPLEX
+    .nfts()
+    .builders()
+    .create({
+        uri: metadataUri,
+        name: name,
+        sellerFeeBasisPoints: sellerFee,
+        symbol: symbol,
+        creators: creators,
+        isMutable: true,
+        isCollection: false,
+        tokenStandard: TokenStandard.ProgrammableNonFungible,
+        ruleSet: null
+    });
+    const { nft } = await METAPLEX.nfts().create({
+        uri: metadataUri,
+        name: name,
+        sellerFeeBasisPoints: sellerFee,
+        symbol: symbol,
+        creators: creators,
+        isMutable: false,
+    });
+    let { signature, confirmResponse } = await METAPLEX.rpc().sendAndConfirmTransaction(transactionBuilder);
+    if (confirmResponse.value.err) {
+        throw new Error('failed to confirm transaction');
+    }
+    const { mintAddress } = transactionBuilder.getContext();
+    console.log(`   Success!🎉`);
+    console.log(`   Minted NFT: https://explorer.solana.com/address/${mintAddress.toString()}?cluster=devnet`);
+    console.log(`   Tx: https://explorer.solana.com/tx/${signature}?cluster=devnet`);
+    return mintAddress
+  }
+  catch (err) {
+    console.log(err);
+  }
 }
+
+// Transfer function 
+async function transferNFT(
+  senderKeypair: Keypair, 
+  recipientPublicKey: string,
+  mintAddress: string
+) {
+  console.log(`Step 3 - Transferring pNFT to ${recipientPublicKey}`);
+  const senderAddress = senderKeypair.publicKey.toString()
+  const destination = new PublicKey(recipientPublicKey);
+  const mint = new PublicKey(mintAddress)
+  const transferTransactionBuilder = await METAPLEX.nfts().builders().transfer({
+      nftOrSft: {address: mint, tokenStandard: TokenStandard.ProgrammableNonFungible},
+      authority: WALLET,
+      fromOwner: WALLET.publicKey,
+      toOwner: destination,
+  });
+  // Name new variables since we already have a signature and confirmResponse
+  let { signature: sig2, confirmResponse: res2 } = await METAPLEX.rpc().sendAndConfirmTransaction(transferTransactionBuilder, {commitment: 'finalized'});
+  if (res2.value.err) {
+      throw new Error('failed to confirm transfer transaction');
+  }
+  const txSuccess = (` 
+  Transfer successful!\n 
+  Sender: ${senderAddress}\n
+  Receiver: ${recipientPublicKey}\n
+  Transation: https://explorer.solana.com/tx/${sig2}?cluster=devnet`);
+  console.log(txSuccess)
+  return txSuccess
+
+}
+
+// function isValidBase58(value: string): boolean {
+//   const BASE58_REGEX = /^[A-HJ-NP-Za-km-z1-9]+$/;
+//   return BASE58_REGEX.test(value);
+// }
 
 ///////// API ROUTE
 
-// Define the /imagine route
 app.get('/imagine', async (req, res) => {
   const userPrompt = req.query.user_prompt;
-  console.log(`Received request -> ${userPrompt}`)
-  if (typeof userPrompt !== 'string') {
-    res.status(400).send('Invalid prompt');
+  const userAddress = req.query.address; // the user provider public address where they want to receive their NFT
+
+  // Validate both user_prompt and address
+  if (typeof userPrompt !== 'string' || typeof userAddress !== 'string') {
+    res.status(400).send('Invalid input: Ensure both user_prompt and address are provided as strings.');
     return;
   }
 
-  const llmSays = await generatePrompt(userPrompt)
-  console.log(`LLM prompt -> ${llmSays}`)
-
-  const CONFIG = await defineConfig(llmSays);
-  console.log(`Config set -> ${JSON.stringify(CONFIG)}`);
+  console.log(`Received request -> Prompt: ${userPrompt}, Address: ${userAddress}`);
 
   try {
+    const llmSays = await generatePrompt(userPrompt);
+    console.log(`LLM prompt -> ${llmSays}`);
+
+    const CONFIG = await defineConfig(llmSays);
+    console.log(`Config set -> ${JSON.stringify(CONFIG)}`);
+
     const imageLocation = await imagine(llmSays);
-    console.log(`Image succesfully created and stored in: ${imageLocation}`);
-    const imageUri = await uploadImage(imageLocation, "")
-    console.log(`Image URI -> ${imageUri}`)
-    const metadataUri = await uploadMetadata(imageUri, CONFIG.imgType, CONFIG.imgName, CONFIG.description, CONFIG.attributes); 
-    console.log(metadataUri)
-    const minter = mintNft(metadataUri, CONFIG.imgName, CONFIG.sellerFeeBasisPoints, CONFIG.symbol, CONFIG.creators);
-    console.log(minter)
-    res.send('Done!');
-  } 
-  catch (error) {
-    console.error('Error processing your request:', error);
-    res.status(500).send('Error processing your request');
+    console.log(`Image successfully created and stored in: ${imageLocation}`);
+    const imageUri = await uploadImage(imageLocation, "");
+    console.log(`Image URI -> ${imageUri}`);
+    const metadataUri = await uploadMetadata(imageUri, CONFIG.imgType, CONFIG.imgName, CONFIG.description, CONFIG.attributes);
+    console.log(`Metadata URI -> ${metadataUri}`);
+
+    // Ensure userAddress is treated as a valid recipient public key
+    const mintAddress = await mintProgrammableNft(metadataUri, CONFIG.imgName, CONFIG.sellerFeeBasisPoints, CONFIG.symbol, CONFIG.creators);
+    if (!mintAddress) {
+      throw new Error("Failed to mint the NFT. Mint address is undefined.");
+    }
+
+    const mint = mintAddress.toString()
+
+    // Correct the order and usage of parameters for the transferNFT function
+    const mintSend = await transferNFT(WALLET, userAddress, mint);
+
+    res.send({ message: mintSend });
+    return
+  } catch (error) {
+    console.error('Error processing request:', error);
+    res.status(500).send({ error: "Error processing the request"});
   }
-
 });
-
 
 // Start the server
 app.listen(port, () => {
@@ -246,6 +332,5 @@ app.listen(port, () => {
 });
 
 export default app;
-
 
 // test: curl "http://localhost:8800/imagine?user_prompt=a%20cat%20on%20a%20roof"
